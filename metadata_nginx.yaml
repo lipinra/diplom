@@ -1,0 +1,65 @@
+#cloud-config
+disable_root: true
+timezone: Europe/Moscow
+package_update: true
+package_upgrade: true
+apt:
+  preserve_sources_list: true
+  sources:
+    elk.list:
+      source: "deb https://mirror.yandex.ru/mirrors/elastic/8/ stable main"
+      keyid: D27D666CD88E42B4
+    nginx.list:
+      source: "deb http://nginx.org/packages/mainline/ubuntu jammy nginx"
+      keyid: ABF5BD827BD9BF62
+    zabbix.list:
+      source: "deb https://repo.zabbix.com/zabbix/6.5/ubuntu jammy main"
+      keyid: 082AB56BA14FE591
+
+packages:
+  - filebeat
+  - nginx
+  - zabbix-agent2
+
+write_files:
+  - path: /etc/filebeat/filebeat.yml
+    content: |
+      filebeat.inputs:
+      - type: filestream
+        id: my-filestream-id
+        enabled: false
+        paths:
+          - /var/log/*.log
+      filebeat.config.modules:
+        path: ${path.config}/modules.d/*.yml
+        reload.enabled: false
+      setup.template.settings:
+        index.number_of_shards: 1
+      setup.kibana:
+        host: "192.168.40.4:5601"
+        protocol: "http"
+      output.elasticsearch:
+        hosts: ["192.168.30.3:9200"]
+    permissions: '0600'
+    owner: root:root
+
+runcmd:
+  - [ sh, -c, "sed -i 's/Server=127.0.0.1/Server=192.168.40.3/' /etc/zabbix/zabbix_agent2.conf" ]
+  - [ sh, -c, "sed -i 's/ServerActive=127.0.0.1//' /etc/zabbix/zabbix_agent2.conf" ]
+  - [ sh, -c, "echo $(hostname | cut -d '.' -f 1 ) > /usr/share/nginx/html/index.html" ]
+  - [ sh, -c, "chmod 644 /var/log/nginx/*" ]
+  - [ sh, -c, "sed -i 's/create 640 nginx adm/create 644 nginx adm/' /etc/logrotate.d/nginx" ]
+  - [ systemctl, enable, filebeat.service, nginx.service, zabbix-agent2.service ]
+  - [ systemctl, restart, filebeat.service, logrotate.service, nginx.service, zabbix-agent2.service ]
+  - [ sh, -c, "filebeat modules enable nginx" ]
+  - [ sh, -c, "sed -i 's/enabled: false/enabled: true/g' /etc/filebeat/modules.d/nginx.yml" ]
+  - [ systemctl, restart, filebeat.service ]
+  - [ sh, -c, "filebeat setup" ]
+
+users:
+  - name: user
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh-authorized-keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDLU08AWIPAFQ0vfXU3AxHZbyIREoxA1POpxofHkVBT2Q+daDdCKswyu2etTCa0VAHu2NVWireQqKeYkS1oDQpz4J2KC0r97UIp61MZpocRX657YqVfWBXc7m679b9kPAXhIBZ1v9vdOl+nd0KgXstSKN7FCwQxq4XCAUe/0r62qF2PmYiNbYzay1vSmmJEgae3hLHnGrO3m3CfVsY4c13qqon1YdfLkiw4NaXZoNg8tWFu06mH9k+v/iSWXZago+8KQZQUrVR0cBGvM1uR4Bc4RHB3lX1FuU5M5W/hxkmDmN51U7OdNk9x6Srl058MfkYa0UcrhRDr+Ksv36NzQY4V user@notebook

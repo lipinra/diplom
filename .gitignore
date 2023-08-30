@@ -1,0 +1,9 @@
+!.gitignore
+.terraform
+.terraform.lock.hcl
+ansible.cfg
+hosts
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfvars
+temp.md
